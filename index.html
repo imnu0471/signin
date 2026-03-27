@@ -25,13 +25,14 @@ nav{background:#fff;padding:16px 24px;border-bottom:1px solid #e5e5e5;display:fl
 .btn-primary{background:#007aff;color:#fff;width:100%}
 .btn-primary:active{opacity:0.8}
 .btn-secondary{background:#f5f5f5;color:#333}
-.btn-group{display:flex;gap:8px}
+.btn-group{display:flex;gap:8px;flex-wrap:wrap}
+.btn-group .btn{margin-right:8px;margin-bottom:8px}
 .qr-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px}
 .qr-card{background:#fff;border-radius:12px;padding:20px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.06)}
 .qr-card h4{font-size:16px;margin-bottom:8px}
 .qr-card p{font-size:12px;color:#999;margin-bottom:16px}
 .qr-wrapper{display:inline-block;padding:12px;background:#fff;border:1px solid #e5e5e5;border-radius:8px}
-.success{position:fixed;inset:0;background:rgba(0,0,0,0.8);display:none;align-items:center;justify-content:center;flex-direction:column;color:#fff;z-index:1000}
+.success{position:fixed;inset:0;background:rgba(0,0,0,0.8);display:none;align-items:center;justify-content:center;flex-direction-column;color:#fff;z-index:1000}
 .success.show{display:flex}
 .success-icon{width:80px;height:80px;background:#34c759;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:40px;margin-bottom:16px}
 .success h2{font-size:24px}
@@ -43,6 +44,7 @@ table{width:100%;border-collapse:collapse}
 th,td{padding:12px;text-align:left;border-bottom:1px solid #f0f0f0;font-size:14px}
 th{font-weight:600;color:#666;background:#fafafa}
 .empty{text-align:center;padding:40px;color:#999}
+textarea{width:100%;height:200px;padding:12px;border:1px solid #e5e5e5;border-radius:8px;font-size:14px;font-family:monospace;resize:vertical}
 @media(max-width:600px){.qr-grid{grid-template-columns:1fr}}
 </style>
 </head>
@@ -65,6 +67,17 @@ th{font-weight:600;color:#666;background:#fafafa}
 <button class="btn btn-primary" onclick="generateQR()">生成二维码</button>
 </div>
 
+<div class="card">
+<h3>数据导入/导出</h3>
+<p style="font-size:12px;color:#999;margin-bottom:12px">将下面的数据复制保存，或粘贴之前的数据导入</p>
+<textarea id="dataJson" placeholder="签到数据JSON"></textarea>
+<div class="btn-group" style="margin-top:12px">
+<button class="btn btn-secondary" onclick="importData()">📥 导入数据</button>
+<button class="btn btn-secondary" onclick="exportData()">📤 导出数据</button>
+<button class="btn btn-secondary" onclick="clearData()">🗑️ 清空数据</button>
+</div>
+</div>
+
 <div class="qr-grid">
 <div class="qr-card">
 <h4>✅ 签到</h4>
@@ -85,8 +98,7 @@ th{font-weight:600;color:#666;background:#fafafa}
 <div class="stat"><div class="stat-value" id="stat-in">0</div><div class="stat-label">签到</div></div>
 <div class="stat"><div class="stat-value" id="stat-out">0</div><div class="stat-label">签退</div></div>
 </div>
-<button class="btn btn-secondary" onclick="loadData()" style="margin-bottom:16px">🔄 刷新</button>
-<button class="btn btn-secondary" onclick="exportExcel()" style="margin-bottom:16px;margin-left:8px">📥 导出Excel</button>
+<button class="btn btn-secondary" onclick="renderTable()" style="margin-bottom:16px">🔄 刷新</button>
 <div class="card">
 <table><thead><tr><th>姓名</th><th>类型</th><th>时间</th></tr></thead><tbody id="tbody"></tbody></table>
 <div class="empty" id="empty">暂无记录</div>
@@ -109,91 +121,106 @@ th{font-weight:600;color:#666;background:#fafafa}
 </div>
 
 <script>
-const API_KEY = "6837d2c9a6c744432f012345";
-const BIN_ID = "67e47e4ead19ca34e058f4b7";
 let type = 'in', records = [];
 
+function getRecords(){
+  try{
+    return JSON.parse(localStorage.getItem('signin_records') || '[]');
+  }catch(e){
+    return [];
+  }
+}
+
+function saveRecords(data){
+  localStorage.setItem('signin_records', JSON.stringify(data));
+}
+
 function showPage(p){
- document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
- document.querySelectorAll('.nav-tab').forEach(x=>x.classList.remove('active'));
- document.getElementById('page-'+p).classList.add('active');
- if(p==='records')loadData();
+  document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(x=>x.classList.remove('active'));
+  document.getElementById('page-'+p).classList.add('active');
+  if(p==='records')renderTable();
 }
 
 function generateQR(){
- const org = document.getElementById('orgName').value || '培训';
- const base = location.href.split('?')[0];
- ['in','out'].forEach(t=>{
-  const url = base + '?type=' + t + '&org=' + encodeURIComponent(org);
-  document.getElementById('qr-'+t).innerHTML = '';
-  new QRCode(document.getElementById('qr-'+t),{text:url,width:150,height:150});
- });
+  const org = document.getElementById('orgName').value || '培训';
+  const base = location.href.split('?')[0];
+  ['in','out'].forEach(t=>{
+    const url = base + '?type=' + t + '&org=' + encodeURIComponent(org);
+    document.getElementById('qr-'+t).innerHTML = '';
+    new QRCode(document.getElementById('qr-'+t),{text:url,width:150,height:150});
+  });
 }
 
-async function loadData(){
- try{
-  const r = await fetch('https://api.jsonbin.io/v3/b/'+BIN_ID+'/latest',{headers:{'X-Master-Key':API_KEY}});
-  records = (await r.json()).record || [];
+function renderTable(){
+  records = getRecords();
   document.getElementById('stat-total').textContent = records.length;
   document.getElementById('stat-in').textContent = records.filter(x=>x.type==='in').length;
   document.getElementById('stat-out').textContent = records.filter(x=>x.type==='out').length;
   const tbody = document.getElementById('tbody');
   if(records.length===0){
-   tbody.innerHTML = '';
-   document.getElementById('empty').style.display = 'block';
+    tbody.innerHTML = '';
+    document.getElementById('empty').style.display = 'block';
   }else{
-   document.getElementById('empty').style.display = 'none';
-   tbody.innerHTML = records.map(r=>'<tr><td>'+r.name+'</td><td>'+(r.type==='in'?'✅签到':'🚪签退')+'</td><td>'+r.time+'</td></tr>').join('');
+    document.getElementById('empty').style.display = 'none';
+    tbody.innerHTML = records.map(r=>'<tr><td>'+r.name+'</td><td>'+(r.type==='in'?'✅签到':'🚪签退')+'</td><td>'+r.time+'</td></tr>').join('');
   }
- }catch(e){
-  console.error(e);
- }
 }
 
-async function submit(){
- const name = document.getElementById('scan-name').value.trim();
- if(!name)return alert('请输入姓名');
- const now = new Date();
- const rec = {name,type,time:now.toLocaleString('zh-CN'),ts:now.getTime()};
- try{
-  const r = await fetch('https://api.jsonbin.io/v3/b/'+BIN_ID+'/latest',{headers:{'X-Master-Key':API_KEY}});
-  const data = (await r.json()).record || [];
-  data.unshift(rec);
-  await fetch('https://api.jsonbin.io/v3/b/'+BIN_ID,{method:'PUT',headers:{'Content-Type':'application/json','X-Master-Key':API_KEY},body:JSON.stringify(data)});
+function submit(){
+  const name = document.getElementById('scan-name').value.trim();
+  if(!name)return alert('请输入姓名');
+  const now = new Date();
+  const rec = {name,type,time:now.toLocaleString('zh-CN'),ts:now.getTime()};
+  records = getRecords();
+  records.unshift(rec);
+  saveRecords(records);
   document.getElementById('success-text').textContent = name + (type==='in'?' 签到成功':' 签退成功');
   document.getElementById('success').classList.add('show');
   setTimeout(()=>{
-   document.getElementById('success').classList.remove('show');
-   document.getElementById('scan-name').value = '';
+    document.getElementById('success').classList.remove('show');
+    document.getElementById('scan-name').value = '';
   },2000);
- }catch(e){
-  alert('提交失败');
- }
+}
+
+function importData(){
+  const data = document.getElementById('dataJson').value.trim();
+  if(!data)return alert('请粘贴数据');
+  try{
+    const arr = JSON.parse(data);
+    if(Array.isArray(arr)){
+      saveRecords(arr);
+      alert('导入成功！共'+arr.length+'条记录');
+      renderTable();
+    }else{
+      alert('数据格式错误');
+    }
+  }catch(e){
+    alert('数据格式错误');
+  }
+}
+
+function exportData(){
+  records = getRecords();
+  document.getElementById('dataJson').value = JSON.stringify(records, null, 2);
+}
+
+function clearData(){
+  if(!confirm('确定清空所有记录？'))return;
+  saveRecords([]);
+  renderTable();
+  alert('已清空');
 }
 
 const u = new URLSearchParams(location.search);
 if(u.get('type')){
- type = u.get('type');
- document.querySelector('nav').style.display = 'none';
- document.getElementById('page-scan').classList.add('active');
- document.getElementById('scan-title').textContent = type==='in'?'培训签到':'培训签退';
+  type = u.get('type');
+  document.querySelector('nav').style.display = 'none';
+  document.getElementById('page-scan').classList.add('active');
+  document.getElementById('scan-title').textContent = type==='in'?'培训签到':'培训签退';
 }else{
- generateQR();
- loadData();
-}
-
-async function exportExcel(){
- if(records.length===0)return alert('暂无记录');
- let csv = '姓名,类型,时间\n';
- records.forEach(r=>{
-  csv += '"'+r.name+'","'+(r.type==='in'?'签到':'签退')+'","'+r.time+'"\n';
- });
- const BOM = '\uFEFF';
- const blob = new Blob([BOM+csv],{type:'text/csv;charset=utf-8'});
- const a = document.createElement('a');
- a.href = URL.createObjectURL(blob);
- a.download = '签到记录_'+new Date().toLocaleDateString('zh-CN')+'.csv';
- a.click();
+  generateQR();
+  renderTable();
 }
 </script>
 </body>
