@@ -86,6 +86,7 @@ th{font-weight:600;color:#666;background:#fafafa}
 <div class="stat"><div class="stat-value" id="stat-out">0</div><div class="stat-label">签退</div></div>
 </div>
 <button class="btn btn-secondary" onclick="loadData()" style="margin-bottom:16px">🔄 刷新</button>
+<button class="btn btn-secondary" onclick="exportExcel()" style="margin-bottom:16px;margin-left:8px">📥 导出Excel</button>
 <div class="card">
 <table><thead><tr><th>姓名</th><th>类型</th><th>时间</th></tr></thead><tbody id="tbody"></tbody></table>
 <div class="empty" id="empty">暂无记录</div>
@@ -179,6 +180,20 @@ if(u.get('type')){
 }else{
  generateQR();
  loadData();
+}
+
+async function exportExcel(){
+ if(records.length===0)return alert('暂无记录');
+ let csv = '姓名,类型,时间\n';
+ records.forEach(r=>{
+  csv += '"'+r.name+'","'+(r.type==='in'?'签到':'签退')+'","'+r.time+'"\n';
+ });
+ const BOM = '\uFEFF';
+ const blob = new Blob([BOM+csv],{type:'text/csv;charset=utf-8'});
+ const a = document.createElement('a');
+ a.href = URL.createObjectURL(blob);
+ a.download = '签到记录_'+new Date().toLocaleDateString('zh-CN')+'.csv';
+ a.click();
 }
 </script>
 </body>
